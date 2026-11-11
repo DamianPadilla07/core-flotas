@@ -23,7 +23,7 @@ public class Vehiculo {
     @Column(nullable = false, length = 50)
     private String modelo;
 
-    // 🚨 REQUISITO 1: VALIDACIÓN EN BACK-END DEL DATO SENSIBLE DEL CORE
+    //  VALIDACIÓN EN BACK-END DEL DATO SENSIBLE DEL CORE
     @NotNull(message = "El umbral de depreciación es obligatorio")
     @DecimalMin(value = "1000.00", message = "El umbral de rentabilidad debe ser mayor o igual a $1,000 para evitar divisiones por cero en el cálculo del Core")
     @Column(name = "umbral_depreciacion", nullable = false)
@@ -33,4 +33,9 @@ public class Vehiculo {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_poliza", nullable = false)
     private Poliza poliza;
+
+    // Agregar esto dentro de tu clase Vehiculo.java
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_institucion", nullable = false)
+    private Institucion institucion;
 }

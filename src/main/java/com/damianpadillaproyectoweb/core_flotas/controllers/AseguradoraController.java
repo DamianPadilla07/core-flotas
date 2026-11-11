@@ -5,6 +5,8 @@ import com.damianpadillaproyectoweb.core_flotas.models.Poliza;
 import com.damianpadillaproyectoweb.core_flotas.repositories.AseguradoraRepository;
 import com.damianpadillaproyectoweb.core_flotas.repositories.PolizaRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,5 +33,12 @@ public class AseguradoraController {
     @GetMapping("/{id}/polizas")
     public List<Poliza> obtenerPolizasPorAseguradora(@PathVariable Integer id) {
         return polizaRepository.findByAseguradoraId(id);
+    }
+
+    // Guardar nueva aseguradora desde Angular
+    @PostMapping
+    public ResponseEntity<Aseguradora> crearAseguradora(@RequestBody Aseguradora aseguradora) {
+        Aseguradora nuevaAseguradora = aseguradoraRepository.save(aseguradora);
+        return new ResponseEntity<>(nuevaAseguradora, HttpStatus.CREATED);
     }
 }

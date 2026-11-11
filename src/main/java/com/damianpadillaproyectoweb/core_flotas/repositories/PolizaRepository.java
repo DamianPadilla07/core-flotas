@@ -7,7 +7,5 @@ import java.util.List;
 
 @Repository
 public interface PolizaRepository extends JpaRepository<Poliza, Integer> {
-
-    // Consulta personalizada para el Dropdown Dependiente (Aseguradora -> Pólizas)
     List<Poliza> findByAseguradoraId(Integer aseguradoraId);
 }

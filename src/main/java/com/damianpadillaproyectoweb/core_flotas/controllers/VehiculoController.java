@@ -23,7 +23,7 @@ public class VehiculoController {
         return vehiculoRepository.findAll();
     }
 
-    //  EL REQUISITO 1 DEL PROFE: Guardar con Validación de Dato Sensible
+    // Guardar con Validación de Dato Sensible
     @PostMapping
     public ResponseEntity<Vehiculo> crearVehiculo(@Valid @RequestBody Vehiculo vehiculo) {
         // Si el "umbralDepreciacion" viene en $0 o negativo desde Angular,
