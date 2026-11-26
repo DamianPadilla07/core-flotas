@@ -8,11 +8,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ResumenFlotaDTO {
-    private int totalVehiculos;
-    private int optimos;
-    private int moderados;
-    private int criticos;
-    private double totalUmbralDepreciacion;
-    private double totalCapitalAsegurado;
-    private double indiceRespaldoGlobal;
+    private String institucionNombre;
+    private int vehiculosEvaluados;
+    private double ahorroPorSeguros;
+    private double perdidasOperativas;
+    private int cantidadRentables;
+    private int cantidadObservacion;
+    private int cantidadDarDeBaja;
 }

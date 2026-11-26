@@ -35,4 +35,8 @@ public class Vehiculo {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "id_institucion", nullable = false)
     private Institucion institucion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private EstadoVehiculo estado = EstadoVehiculo.OPERATIVO;
 }

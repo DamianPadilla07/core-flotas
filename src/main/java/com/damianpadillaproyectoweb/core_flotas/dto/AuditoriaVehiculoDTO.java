@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -14,14 +14,13 @@ public class AuditoriaVehiculoDTO {
     private String placa;
     private String modelo;
     private String institucion;
-    private String aseguradora;
     private String numeroPoliza;
-    private LocalDate fechaExpiracion;
-    private long diasParaVencer;
-    private double umbralDepreciacion;
-    private double montoCobertura;
-    private double brechaCobertura;
-    private double ratioCobertura;
-    private String nivelRiesgo;
-    private String dictamen;
+    private String aseguradora;
+    private double umbralMaximo;
+    private double ahorroSeguros;
+    private double gastoNeto;
+    private double porcentajeRiesgo;
+    private String estadoSugerido;
+    private int totalReparaciones;
+    private List<DetalleAuditoriaItemDTO> detalles;
 }

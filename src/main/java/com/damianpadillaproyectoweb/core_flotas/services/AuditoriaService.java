@@ -1,89 +1,148 @@
 package com.damianpadillaproyectoweb.core_flotas.services;
 
 import com.damianpadillaproyectoweb.core_flotas.dto.AuditoriaVehiculoDTO;
+import com.damianpadillaproyectoweb.core_flotas.dto.DetalleAuditoriaItemDTO;
 import com.damianpadillaproyectoweb.core_flotas.dto.ResumenFlotaDTO;
-import com.damianpadillaproyectoweb.core_flotas.models.Poliza;
-import com.damianpadillaproyectoweb.core_flotas.models.Vehiculo;
+import com.damianpadillaproyectoweb.core_flotas.models.*;
+import com.damianpadillaproyectoweb.core_flotas.repositories.InstitucionRepository;
+import com.damianpadillaproyectoweb.core_flotas.repositories.ReparacionRepository;
 import com.damianpadillaproyectoweb.core_flotas.repositories.VehiculoRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AuditoriaService {
 
-    private final VehiculoRepository vehiculoRepository;
+    private static final double PENALIZACION_REINCIDENCIA = 50.0;
 
-    public AuditoriaService(VehiculoRepository vehiculoRepository) {
+    private final VehiculoRepository vehiculoRepository;
+    private final ReparacionRepository reparacionRepository;
+    private final InstitucionRepository institucionRepository;
+
+    public AuditoriaService(
+            VehiculoRepository vehiculoRepository,
+            ReparacionRepository reparacionRepository,
+            InstitucionRepository institucionRepository) {
         this.vehiculoRepository = vehiculoRepository;
+        this.reparacionRepository = reparacionRepository;
+        this.institucionRepository = institucionRepository;
     }
 
-    public List<AuditoriaVehiculoDTO> auditarFlota(Integer institucionId) {
+    public List<AuditoriaVehiculoDTO> auditarFlota(
+            Integer institucionId, LocalDate fechaInicio, LocalDate fechaFin) {
         List<Vehiculo> vehiculos = (institucionId != null)
                 ? vehiculoRepository.findByInstitucionId(institucionId)
                 : vehiculoRepository.findAll();
 
         return vehiculos.stream()
-                .map(this::evaluarVehiculo)
+                .map(v -> evaluarVehiculo(v, fechaInicio, fechaFin))
                 .toList();
     }
 
-    public ResumenFlotaDTO obtenerResumenFlota(Integer institucionId) {
-        List<AuditoriaVehiculoDTO> auditorias = auditarFlota(institucionId);
+    public ResumenFlotaDTO obtenerResumenFlota(
+            Integer institucionId, LocalDate fechaInicio, LocalDate fechaFin) {
+        List<AuditoriaVehiculoDTO> auditorias = auditarFlota(institucionId, fechaInicio, fechaFin);
 
-        int optimos = 0;
-        int moderados = 0;
-        int criticos = 0;
-        double sumaUmbrales = 0.0;
-        double sumaCoberturas = 0.0;
+        String nombreInstitucion = "Consolidado Global";
+        if (institucionId != null) {
+            nombreInstitucion = institucionRepository.findById(institucionId)
+                    .map(Institucion::getRazonSocial)
+                    .orElse("Institución #" + institucionId);
+        }
+
+        double ahorroTotal = 0.0;
+        double perdidasTotales = 0.0;
+        int rentables = 0;
+        int observacion = 0;
+        int darDeBaja = 0;
 
         for (AuditoriaVehiculoDTO item : auditorias) {
-            sumaUmbrales += item.getUmbralDepreciacion();
-            sumaCoberturas += item.getMontoCobertura();
+            ahorroTotal += item.getAhorroSeguros();
+            perdidasTotales += item.getGastoNeto();
 
-            switch (item.getNivelRiesgo()) {
-                case "OPTIMO" -> optimos++;
-                case "MODERADO" -> moderados++;
-                default -> criticos++;
+            switch (item.getEstadoSugerido()) {
+                case "RENTABLE" -> rentables++;
+                case "EN OBSERVACIÓN" -> observacion++;
+                default -> darDeBaja++;
             }
         }
 
-        double indiceGlobal = (sumaUmbrales > 0)
-                ? redondear(sumaCoberturas / sumaUmbrales)
-                : 0.0;
-
         return new ResumenFlotaDTO(
+                nombreInstitucion,
                 auditorias.size(),
-                optimos,
-                moderados,
-                criticos,
-                redondear(sumaUmbrales),
-                redondear(sumaCoberturas),
-                indiceGlobal
+                redondear(ahorroTotal),
+                redondear(perdidasTotales),
+                rentables,
+                observacion,
+                darDeBaja
         );
     }
 
-    private AuditoriaVehiculoDTO evaluarVehiculo(Vehiculo vehiculo) {
-        Poliza poliza = vehiculo.getPoliza();
+    private AuditoriaVehiculoDTO evaluarVehiculo(
+            Vehiculo vehiculo, LocalDate fechaInicio, LocalDate fechaFin) {
+        List<Reparacion> reparaciones = (fechaInicio != null && fechaFin != null)
+                ? reparacionRepository.findByVehiculoIdAndFechaIngresoBetweenOrderByFechaIngresoAsc(
+                vehiculo.getId(), fechaInicio, fechaFin)
+                : reparacionRepository.findByVehiculoIdOrderByFechaIngresoAsc(vehiculo.getId());
+
+        Map<Integer, Integer> historialFallasPorRepuesto = new HashMap<>();
+        List<DetalleAuditoriaItemDTO> desglose = new ArrayList<>();
+
+        double ahorroSeguros = 0.0;
+        double gastoTotalAcumulado = 0.0;
+
+        for (Reparacion rep : reparaciones) {
+            if (rep.getEstado() == EstadoReparacion.CANCELADO) {
+                continue;
+            }
+
+            for (DetalleReparacion det : rep.getDetalles()) {
+                double costoBase = redondear(det.getCantidad() * det.getPrecioUnitario());
+                boolean cubierto = Boolean.TRUE.equals(det.getCubiertoPorSeguro());
+
+                double coberturaMonto = cubierto ? costoBase : 0.0;
+                int porcentajeCobertura = cubierto ? 100 : 0;
+                double gastoNetoItem = cubierto ? 0.0 : costoBase;
+
+                Integer repuestoId = det.getRepuesto().getId();
+                int fallasPrevias = historialFallasPorRepuesto.getOrDefault(repuestoId, 0);
+                double penalizacion = fallasPrevias * PENALIZACION_REINCIDENCIA;
+                historialFallasPorRepuesto.put(repuestoId, fallasPrevias + 1);
+
+                double gastoRealItem = redondear(gastoNetoItem + penalizacion);
+
+                ahorroSeguros += coberturaMonto;
+                gastoTotalAcumulado += gastoRealItem;
+
+                desglose.add(new DetalleAuditoriaItemDTO(
+                        rep.getFechaIngreso(),
+                        det.getRepuesto().getNombre(),
+                        det.getCantidad(),
+                        costoBase,
+                        coberturaMonto,
+                        porcentajeCobertura,
+                        penalizacion,
+                        gastoRealItem
+                ));
+            }
+        }
+
         double umbral = (vehiculo.getUmbralDepreciacion() != null) ? vehiculo.getUmbralDepreciacion() : 0.0;
-        double cobertura = (poliza != null && poliza.getMontoCobertura() != null) ? poliza.getMontoCobertura() : 0.0;
+        double porcentajeRiesgo = (umbral > 0)
+                ? redondear((gastoTotalAcumulado / umbral) * 100.0)
+                : 0.0;
 
-        long diasParaVencer = (poliza != null && poliza.getFechaExpiracion() != null)
-                ? ChronoUnit.DAYS.between(LocalDate.now(), poliza.getFechaExpiracion())
-                : -1;
+        String estadoSugerido = clasificarRentabilidad(porcentajeRiesgo);
 
-        double brecha = redondear(cobertura - umbral);
-        double ratio = (umbral > 0) ? redondear(cobertura / umbral) : 0.0;
-
-        String nivelRiesgo = determinarNivelRiesgo(diasParaVencer, cobertura, umbral, ratio);
-        String dictamen = generarDictamen(diasParaVencer, brecha, ratio);
-
+        Poliza poliza = vehiculo.getPoliza();
         String nombreInstitucion = (vehiculo.getInstitucion() != null)
                 ? vehiculo.getInstitucion().getRazonSocial()
                 : "Sin asignar";
-
         String nombreAseguradora = (poliza != null && poliza.getAseguradora() != null)
                 ? poliza.getAseguradora().getNombre()
                 : "Sin aseguradora";
@@ -93,43 +152,26 @@ public class AuditoriaService {
                 vehiculo.getPlaca(),
                 vehiculo.getModelo(),
                 nombreInstitucion,
-                nombreAseguradora,
                 (poliza != null) ? poliza.getNumeroPoliza() : "N/A",
-                (poliza != null) ? poliza.getFechaExpiracion() : null,
-                diasParaVencer,
+                nombreAseguradora,
                 redondear(umbral),
-                redondear(cobertura),
-                brecha,
-                ratio,
-                nivelRiesgo,
-                dictamen
+                redondear(ahorroSeguros),
+                redondear(gastoTotalAcumulado),
+                porcentajeRiesgo,
+                estadoSugerido,
+                reparaciones.size(),
+                desglose
         );
     }
 
-    private String determinarNivelRiesgo(long diasParaVencer, double cobertura, double umbral, double ratio) {
-        if (diasParaVencer < 0 || cobertura < umbral) {
-            return "CRITICO";
+    private String clasificarRentabilidad(double porcentajeRiesgo) {
+        if (porcentajeRiesgo >= 100.0) {
+            return "DAR DE BAJA";
         }
-        if (diasParaVencer <= 30 || ratio < 1.20) {
-            return "MODERADO";
+        if (porcentajeRiesgo >= 80.0) {
+            return "EN OBSERVACIÓN";
         }
-        return "OPTIMO";
-    }
-
-    private String generarDictamen(long diasParaVencer, double brecha, double ratio) {
-        if (diasParaVencer < 0) {
-            return "Poliza vencida hace " + Math.abs(diasParaVencer) + " dias. Activo sin respaldo.";
-        }
-        if (brecha < 0) {
-            return "Infraseguro detectado: deficit de $" + Math.abs(brecha) + " frente al umbral de depreciacion.";
-        }
-        if (diasParaVencer <= 30) {
-            return "Cobertura vigente (" + ratio + "x), pero la poliza vence en " + diasParaVencer + " dias.";
-        }
-        if (ratio < 1.20) {
-            return "Cobertura ajustada (" + ratio + "x). Se recomienda ampliar el margen sobre el umbral.";
-        }
-        return "Activo respaldado con indice de cobertura saludable (" + ratio + "x).";
+        return "RENTABLE";
     }
 
     private double redondear(double valor) {
